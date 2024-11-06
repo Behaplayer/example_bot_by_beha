@@ -5,17 +5,25 @@ import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.updatesreceivers.DefaultBotSession;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 public class MyTelegramBot extends TelegramLongPollingBot {
-    private Map<String, String> loginSteps = new HashMap<>(); // Изменение типа ключа на String
-    private static final String username = "Behaplayer";
-    private static final String password = "beh123mut1195";
+    private final Map<String, Boolean> usersDB = new HashMap<>();
+    private final Map<String, Integer> userBalances = new HashMap<>(); // Хранение баланса пользователей
     private static final String BOT_TOKEN = "7711312557:AAFMddYUfOPSS9diRh4XFtshysjZkuyJ1Mc";
     private static final String BOT_USERNAME = "behaplayerBot";
+    private static final String[][] commandsList = {
+            {"/start", "Запуск бота"},
+            {"/help", "Список команд"},
+            {"/signin", "Войти в аккаунт"},
+            {"/signup", "Авторизоваться"},
+            {"/balance", "Показать баланс"},
+            {"/deposit", "Пополнить баланс"},
+            {"/withdraw", "Снять средства"}
+    };
 
     @Override
     public String getBotUsername() {
@@ -33,35 +41,120 @@ public class MyTelegramBot extends TelegramLongPollingBot {
             Message message = update.getMessage();
             String userMessage = message.getText();
             Long chatId = message.getChatId();
+            String senderUsername = message.getFrom().getUserName();
+            String senderFN = message.getFrom().getFirstName();
+            String senderLN = message.getFrom().getLastName();
 
-            if (userMessage.equals("/start")) {
-                sendTextMessage(chatId, "Привет! Я ваш новый бот.");
-            } else if (userMessage.equals("/help")) {
-                sendTextMessage(chatId, "Я могу помочь вам с базовыми функциями!");
-            } else if (userMessage.equals("/login")) {
-                sendTextMessage(chatId, "Для того чтобы войти в аккаунт, введите username: ");
-                loginSteps.put(chatId.toString(), "WAITING_USERNAME");
-            } else if (loginSteps.containsKey(chatId.toString())) {
-                if (loginSteps.get(chatId.toString()).equals("WAITING_USERNAME")) {
-                    String inUsername = userMessage;
-                    sendTextMessage(chatId, "А также пароль: ");
-                    loginSteps.put(chatId.toString(), "WAITING_PASSWORD");
-                    loginSteps.put(chatId + "_username", inUsername);
-                } else if (loginSteps.get(chatId.toString()).equals("WAITING_PASSWORD")) {
-                    String inUsername = loginSteps.get(chatId + "_username");
-                    String inPassword = userMessage;
-                    loginSteps.remove(chatId.toString());
-                    loginSteps.remove(chatId + "_username");
+            switch (userMessage.toLowerCase()) {
+                case "/start":
+                    sendTextMessage(chatId, "Привет! Я бот от @behaplayer. Для показа списка команд введите /help.");
+                    sendMenuButtons(chatId);
+                    break;
 
-                    if (Objects.equals(inUsername, username) && Objects.equals(inPassword, password)) {
-                        sendTextMessage(chatId, "Добро пожаловать " + username + ", Вы успешно вошли в аккаунт!");
-                    } else {
-                        sendTextMessage(chatId, "Неверное имя пользователя или пароль. Попробуйте еще раз.");
+                case "/help":
+                case "помощь":
+                    sendTextMessage(chatId, "Список команд:");
+                    StringBuilder commandListText = new StringBuilder();
+                    for (String[] command : commandsList) {
+                        commandListText.append(command[0]).append(" - ").append(command[1]).append(".\n");
                     }
-                }
-            } else {
-                sendTextMessage(chatId, "Вы написали: " + userMessage);
+                    sendTextMessage(chatId, commandListText.toString());
+                    break;
+
+                case "/signin":
+                case "войти":
+                    if (usersDB.getOrDefault(senderUsername, false)) {
+                        sendTextMessage(chatId, "Добро пожаловать, " + senderFN + " " + senderLN + "!");
+                    } else {
+                        sendTextMessage(chatId, "Вы не авторизованы, " + senderUsername + "!");
+                    }
+                    break;
+
+                case "/signup":
+                case "авторизоваться":
+                    if (!usersDB.containsKey(senderUsername)) {
+                        usersDB.put(senderUsername, true); // Сохраняем пользователя как авторизованного
+                        userBalances.put(senderUsername, 0); // Устанавливаем начальный баланс 0
+                        sendTextMessage(chatId, "Вы успешно авторизованы!");
+                    } else {
+                        sendTextMessage(chatId, "Вы уже авторизованы.");
+                    }
+                    break;
+
+                case "/balance":
+                case "Баланс":
+                    showBalance(chatId, senderUsername);
+                    break;
+
+                case "/deposit":
+                    deposit(chatId, senderUsername, 100); // Пополнение на 100 для примера
+                    break;
+
+                case "/withdraw":
+                    withdraw(chatId, senderUsername, 50); // Снятие 50 для примера
+                    break;
+
+                default:
+                    sendTextMessage(chatId, "Посмотрите список команд через /help или нижнее меню.");
             }
+        }
+    }
+
+    private void showBalance(Long chatId, String username) {
+        int balance = userBalances.getOrDefault(username, 0);
+        sendTextMessage(chatId, "Ваш баланс: " + balance + "$");
+    }
+
+    private void deposit(Long chatId, String username, int amount) {
+        if (usersDB.getOrDefault(username, false)) { // Проверка авторизации
+            userBalances.put(username, userBalances.getOrDefault(username, 0) + amount);
+            sendTextMessage(chatId, "Вы пополнили баланс на " + amount + "$. Ваш новый баланс: " + userBalances.get(username) + "$");
+        } else {
+            sendTextMessage(chatId, "Пожалуйста, авторизуйтесь для выполнения этой операции.");
+        }
+    }
+
+    private void withdraw(Long chatId, String username, int amount) {
+        if (usersDB.getOrDefault(username, false)) { // Проверка авторизации
+            int currentBalance = userBalances.getOrDefault(username, 0);
+            if (currentBalance >= amount) {
+                userBalances.put(username, currentBalance - amount);
+                sendTextMessage(chatId, "Вы сняли " + amount + "$. Ваш новый баланс: " + userBalances.get(username) + "$");
+            } else {
+                sendTextMessage(chatId, "Недостаточно средств для снятия.");
+            }
+        } else {
+            sendTextMessage(chatId, "Пожалуйста, авторизуйтесь для выполнения этой операции.");
+        }
+    }
+
+    private void sendMenuButtons(Long chatId) {
+        SendMessage message = new SendMessage();
+        message.setChatId(chatId.toString());
+        message.setText("Выберите действие:");
+
+        ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
+        keyboardMarkup.setResizeKeyboard(true);
+
+        KeyboardRow row1 = new KeyboardRow();
+        row1.add("Войти");
+        row1.add("Авторизоваться");
+
+        KeyboardRow row2 = new KeyboardRow();
+        row2.add("Помощь");
+        row2.add("Баланс");
+
+        List<KeyboardRow> keyboard = new ArrayList<>();
+        keyboard.add(row1);
+        keyboard.add(row2);
+
+        keyboardMarkup.setKeyboard(keyboard);
+        message.setReplyMarkup(keyboardMarkup);
+
+        try {
+            execute(message);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
         }
     }
 
